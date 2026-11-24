@@ -23,7 +23,13 @@ jobs:
         shell: bash
         run: pip install -r test/requirements.txt
 
+      - name: Run unit tests (one module at a time)
+        run: |
+          cd test/unit
+          python -m pytest -v --junitxml=unit_results.xml
+
       - name: Run tests
+        if: success() || failure()
         run: |
           cd test
           make clean
@@ -34,7 +40,9 @@ jobs:
       - name: Test Summary
         uses: test-summary/action@v2.4
         with:
-          paths: "test/results.xml"
+          paths: |
+            test/results.xml
+            test/unit/unit_results.xml
         if: always()
 
       - name: upload waveform and test results
@@ -45,4 +53,5 @@ jobs:
           path: |
             test/tb.fst
             test/results.xml
+            test/unit/unit_results.xml
             test/output/*

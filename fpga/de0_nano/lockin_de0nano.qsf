@@ -1,0 +1,124 @@
+# =============================================================================
+# lockin_de0nano.qsf -- Quartus Prime Lite 23.1, Terasic DE0-Nano
+# Pin numbers: DE0-Nano User Manual tables 3-x (CLOCK_50, KEY, SW, LED, GPIO_1).
+# =============================================================================
+set_global_assignment -name FAMILY "Cyclone IV E"
+set_global_assignment -name DEVICE EP4CE22F17C6
+set_global_assignment -name TOP_LEVEL_ENTITY de0_nano_top
+set_global_assignment -name ORIGINAL_QUARTUS_VERSION 23.1STD.1
+set_global_assignment -name PROJECT_OUTPUT_DIRECTORY output_files
+set_global_assignment -name MIN_CORE_JUNCTION_TEMP 0
+set_global_assignment -name MAX_CORE_JUNCTION_TEMP 85
+set_global_assignment -name NOMINAL_CORE_SUPPLY_VOLTAGE 1.2V
+set_global_assignment -name ERROR_CHECK_FREQUENCY_DIVISOR 1
+set_global_assignment -name STRATIX_DEVICE_IO_STANDARD "3.3-V LVTTL"
+set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-STATED"
+set_global_assignment -name CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION "USE AS REGULAR IO"
+
+# ---- clock choice: 0 = 50 MHz straight from CLOCK_50, 1 = 10 MHz from the PLL
+set_parameter -name USE_PLL_10MHZ 0
+
+# ---- sources: the chip RTL is used unchanged from ../../src
+set_global_assignment -name SYSTEMVERILOG_FILE ../../src/nco.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../src/sd_adc.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../src/lockin_core.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../src/spi_regs.sv
+set_global_assignment -name SYSTEMVERILOG_FILE ../../src/project.sv
+set_global_assignment -name SYSTEMVERILOG_FILE de0_nano_top.sv
+set_global_assignment -name VERILOG_FILE lockin_pll.v
+set_global_assignment -name SDC_FILE lockin_de0nano.sdc
+
+# ---- on-board clock, keys, switches, LEDs
+set_location_assignment PIN_R8 -to CLOCK_50
+set_location_assignment PIN_J15 -to KEY[0]
+set_location_assignment PIN_E1 -to KEY[1]
+set_location_assignment PIN_M1 -to SW[0]
+set_location_assignment PIN_T8 -to SW[1]
+set_location_assignment PIN_B9 -to SW[2]
+set_location_assignment PIN_M15 -to SW[3]
+set_location_assignment PIN_A15 -to LED[0]
+set_location_assignment PIN_A13 -to LED[1]
+set_location_assignment PIN_B13 -to LED[2]
+set_location_assignment PIN_A11 -to LED[3]
+set_location_assignment PIN_D1 -to LED[4]
+set_location_assignment PIN_F3 -to LED[5]
+set_location_assignment PIN_B1 -to LED[6]
+set_location_assignment PIN_L3 -to LED[7]
+
+# ---- GPIO_1 = header JP2 (3.3 V only: these pins go straight to the FPGA)
+# JP2-2   ui_in[0] SPI SCLK
+set_location_assignment PIN_F13 -to GPIO_1[0]
+# JP2-4   ui_in[1] SPI MOSI
+set_location_assignment PIN_T15 -to GPIO_1[1]
+# JP2-5   ui_in[2] SPI CS_N
+set_location_assignment PIN_T14 -to GPIO_1[2]
+# JP2-6   ui_in[3] ADC_CMP (RC node)
+set_location_assignment PIN_T13 -to GPIO_1[3]
+# JP2-7   ui_in[4] EXT_REF
+set_location_assignment PIN_R13 -to GPIO_1[4]
+# JP2-8   ui_in[5] spare
+set_location_assignment PIN_T12 -to GPIO_1[5]
+# JP2-9   ui_in[6] spare
+set_location_assignment PIN_R12 -to GPIO_1[6]
+# JP2-10  ui_in[7] spare
+set_location_assignment PIN_T11 -to GPIO_1[7]
+# JP2-13  uo_out[0] SPI MISO
+set_location_assignment PIN_T10 -to GPIO_1[8]
+# JP2-14  uo_out[1] ADC_FB
+set_location_assignment PIN_R11 -to GPIO_1[9]
+# JP2-15  uo_out[2] MOD
+set_location_assignment PIN_P11 -to GPIO_1[10]
+# JP2-16  uo_out[3] REF90
+set_location_assignment PIN_R10 -to GPIO_1[11]
+# JP2-17  uo_out[4] DONE
+set_location_assignment PIN_N12 -to GPIO_1[12]
+# JP2-18  uo_out[5] 0
+set_location_assignment PIN_P9 -to GPIO_1[13]
+# JP2-19  uo_out[6] 0
+set_location_assignment PIN_N9 -to GPIO_1[14]
+# JP2-20  uo_out[7] 0
+set_location_assignment PIN_N11 -to GPIO_1[15]
+# JP2-21  uio[0] input
+set_location_assignment PIN_L16 -to GPIO_1[16]
+# JP2-22  uio[1] input
+set_location_assignment PIN_K16 -to GPIO_1[17]
+# JP2-23  uio[2] input
+set_location_assignment PIN_R16 -to GPIO_1[18]
+# JP2-24  uio[3] input
+set_location_assignment PIN_L15 -to GPIO_1[19]
+# JP2-25  uio[4] input
+set_location_assignment PIN_P15 -to GPIO_1[20]
+# JP2-26  uio[5] input
+set_location_assignment PIN_P16 -to GPIO_1[21]
+# JP2-27  uio[6] input
+set_location_assignment PIN_R14 -to GPIO_1[22]
+# JP2-28  uio[7] input
+set_location_assignment PIN_N16 -to GPIO_1[23]
+
+# ---- I/O standard everywhere
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to CLOCK_50
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to KEY[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to SW[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to LED[*]
+set_instance_assignment -name IO_STANDARD "3.3-V LVTTL" -to GPIO_1[*]
+
+# ---- pull-ups: CS_N idles high (chip deselected when no ESP32 is plugged in),
+#      spare/uio inputs held quiet. NEVER on GPIO_1[3]: a ~25 k pull-up would act as
+#      a third resistor into the RC node and shift the ADC's operating point.
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[2]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[4]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[5]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[6]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[7]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[16]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[17]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[18]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[19]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[20]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[21]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[22]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR ON -to GPIO_1[23]
+set_instance_assignment -name WEAK_PULL_UP_RESISTOR OFF -to GPIO_1[3]
+set_instance_assignment -name ENABLE_BUS_HOLD_CIRCUITRY OFF -to GPIO_1[3]
+
+set_instance_assignment -name PARTITION_HIERARCHY root_partition -to | -section_id Top

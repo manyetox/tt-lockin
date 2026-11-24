@@ -11,3 +11,14 @@ test/sim_build
 test/__pycache__/
 test/results.xml
 test/gate_level_netlist.v
+test/unit/sim_build
+test/unit/__pycache__/
+test/unit/*.xml
+model/__pycache__/
+model/out/
+fpga/de0_nano/db
+fpga/de0_nano/incremental_db
+fpga/de0_nano/output_files
+fpga/de0_nano/*.qws
+fpga/de0_nano/*.rpt
+.pytest_cache/

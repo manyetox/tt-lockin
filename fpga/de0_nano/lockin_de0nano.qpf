@@ -1,0 +1,6 @@
+# Quartus Prime Lite 23.1 project for the DE0-Nano build of tt_um_manyetox_lockin
+QUARTUS_VERSION = "23.1"
+DATE = "00:00:00  October 24, 2026"
+
+# Revisions
+PROJECT_REVISION = "lockin_de0nano"
