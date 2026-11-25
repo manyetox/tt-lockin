@@ -30,9 +30,9 @@ const int PIN_CS   = 5;
 const int PIN_DONE = 4;
 
 // ---- measurement settings ---------------------------------------------------
-const double   F_CLK = 50e6;     // 50e6 if the FPGA uses USE_PLL_10MHZ 0, 10e6 if 1
-const uint32_t TW    = 1024;     // POWER OF TWO. f_mod = TW*F_CLK/2^24 = 3052 Hz at 50 MHz
-const uint16_t M     = 153;      // whole periods: 153 * 2^24/TW / F_CLK = 50.1 ms at 50 MHz
+const double   F_CLK = 10e6;     // 10e6 if the FPGA uses USE_PLL_10MHZ 1 (the chip runs at 10 MHz)
+const uint32_t TW    = 4096;     // POWER OF TWO. f_mod = TW*F_CLK/2^24 = 2441 Hz at 10 MHz
+const uint16_t M     = 122;      // whole periods: 122 * 2^24/TW / F_CLK = 50.0 ms at 10 MHz
                                  // (10 MHz: use TW = 4096, M = 122 -> 2441 Hz, 50.0 ms)
 const double   VDD        = 3.3;
 const double   R1_OVER_R2 = 2.0; // loopback 20k/10k. With the TIA and 10k/10k: 1.0

@@ -5,9 +5,8 @@ project:
   discord:      ""      # Your discord username, for communication and automatically assigning you a Tapeout role (optional)
   description:  "Digital lock-in amplifier: NCO-modulated LED, 1-bit sigma-delta ADC from two pins and an RC, I/Q correlator, SPI readout"      # One line description of what your project does
   language:     "SystemVerilog" # other examples include SystemVerilog, Amaranth, VHDL, etc
-  clock_hz:     50000000       # Clock frequency in Hz (or 0 if not applicable)
-  # ^ placeholder. The design is clock-agnostic; choose 10 or 50 MHz after the first
-  #   hardening run shows the slack at CLOCK_PERIOD = 20 ns (src/config.json).
+  clock_hz:     10000000       # Clock frequency in Hz (or 0 if not applicable)
+  # 10 MHz: at 50 MHz the slow corner (ss, 125 C) missed setup by ~1.2 ns.
 
   # How many tiles your design occupies? A single tile is about 340x160 uM.
   tiles: "1x1"          # Valid values: 1x1, 1x2, 2x2, 3x2, 4x2, 3x4 or 4x4

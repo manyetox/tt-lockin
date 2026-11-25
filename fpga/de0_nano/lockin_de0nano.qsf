@@ -16,7 +16,7 @@ set_global_assignment -name RESERVE_ALL_UNUSED_PINS_WEAK_PULLUP "AS INPUT TRI-ST
 set_global_assignment -name CYCLONEII_RESERVE_NCEO_AFTER_CONFIGURATION "USE AS REGULAR IO"
 
 # ---- clock choice: 0 = 50 MHz straight from CLOCK_50, 1 = 10 MHz from the PLL
-set_parameter -name USE_PLL_10MHZ 0
+set_parameter -name USE_PLL_10MHZ 1
 
 # ---- sources: the chip RTL is used unchanged from ../../src
 set_global_assignment -name SYSTEMVERILOG_FILE ../../src/nco.sv
