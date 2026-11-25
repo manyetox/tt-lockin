@@ -31,7 +31,7 @@
 //   * CTRL.START then DONE after M whole periods. I and Q are readable over SPI.
 //   * Every flip-flop must be reset, or gate-level simulation shows X.
 //
-// THINGS TO DECIDE AND BE READY TO DEFEND
+// DESIGN QUESTIONS TO BE READY TO DEFEND
 //   1. For N_CH > 1 (SpectraBite), which channel defines the M-period window, and why
 //      must the other channels' TWs then be power-of-two multiples of it?
 //      (Walsh/Rademacher orthogonality: model/design_sweep.py, section 2.)
@@ -53,15 +53,89 @@ module tt_um_manyetox_lockin (
   localparam int N_CH = 1;
 
   // ---------------------------------------------------------------------------
-  // TODO(Taylan): instantiate spi_regs, nco, sd_adc and lockin_core and wire the pins
-  // as listed above. Delete the tie-offs below.
+  // Pin names
   // ---------------------------------------------------------------------------
-  assign uo_out  = 8'b0;
+  wire spi_sclk = ui_in[0];
+  wire spi_mosi = ui_in[1];
+  wire spi_cs_n = ui_in[2];
+  wire adc_cmp  = ui_in[3];
+
+  // ---------------------------------------------------------------------------
+  // Blocks
+  // ---------------------------------------------------------------------------
+  wire                 run, start, done, busy;
+  wire [15:0]          m_periods;
+  wire [24*N_CH-1:0]   tw;
+  wire [24*N_CH-1:0]   acc_i, acc_q;
+  wire                 miso;
+  wire                 ref_i, ref_q, period_tick;
+  wire                 b, fb;
+
+  spi_regs #(.N_CH(N_CH)) u_spi (
+      .clk      (clk),
+      .rst_n    (rst_n),
+      .sclk     (spi_sclk),
+      .mosi     (spi_mosi),
+      .cs_n     (spi_cs_n),
+      .miso     (miso),
+      .run      (run),
+      .start    (start),
+      .m_periods(m_periods),
+      .tw       (tw),
+      .done     (done),
+      .busy     (busy),
+      .acc_i    (acc_i),
+      .acc_q    (acc_q)
+  );
+
+  nco u_nco (
+      .clk        (clk),
+      .rst_n      (rst_n),
+      .en         (run),
+      .tw         (tw[23:0]),
+      .ref_i      (ref_i),
+      .ref_q      (ref_q),
+      .period_tick(period_tick)
+  );
+
+  sd_adc u_adc (
+      .clk   (clk),
+      .rst_n (rst_n),
+      .cmp_in(adc_cmp),
+      .b     (b),
+      .fb    (fb)
+  );
+
+  lockin_core u_core (
+      .clk        (clk),
+      .rst_n      (rst_n),
+      .start      (start),
+      .m_periods  (m_periods),
+      .b          (b),
+      .ref_i      (ref_i),
+      .ref_q      (ref_q),
+      .period_tick(period_tick),
+      .acc_i      (acc_i[23:0]),
+      .acc_q      (acc_q[23:0]),
+      .busy       (busy),
+      .done       (done)
+  );
+
+  // ---------------------------------------------------------------------------
+  // Outputs
+  // ---------------------------------------------------------------------------
+  assign uo_out[0]   = miso;
+  assign uo_out[1]   = fb;
+  assign uo_out[2]   = ref_i & run;   // LED off while stopped
+  assign uo_out[3]   = ref_q & run;
+  assign uo_out[4]   = done;
+  assign uo_out[7:5] = 3'b000;
+
   assign uio_out = 8'b0;
   assign uio_oe  = 8'b0;
 
   // List all unused inputs to prevent warnings
-  wire _unused = &{ena, clk, rst_n, ui_in, uio_in, N_CH[0], 1'b0};
+  wire _unused = &{ena, ui_in[7:4], uio_in, 1'b0};
 
 endmodule
 

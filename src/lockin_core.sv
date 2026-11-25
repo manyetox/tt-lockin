@@ -34,7 +34,7 @@
 //   * No overflow handling: the ESP32 keeps M <= TW/2 so that N < 2^(ACC_W-1).
 //     (model: max_m_periods)
 //
-// THINGS TO DECIDE AND BE READY TO DEFEND
+// DESIGN QUESTIONS TO BE READY TO DEFEND
 //   1. Why does an up/down counter equal a multiplier here? What is lost by quantising
 //      the signal to 1 bit, and why does the sigma-delta loop get it back?
 //   2. Why 24 bits? (N < 2^23 samples. What is that in seconds at 10 and 50 MHz?)
@@ -65,16 +65,64 @@ module lockin_core #(
     output logic                    done          // window finished, I/Q frozen
 );
 
-  // ---------------------------------------------------------------------------
-  // TODO(Taylan): your implementation goes here. Delete the tie-offs below.
-  // ---------------------------------------------------------------------------
-  assign acc_i = '0;
-  assign acc_q = '0;
-  assign busy  = 1'b0;
-  assign done  = 1'b0;
+  localparam logic [1:0] S_IDLE  = 2'd0;
+  localparam logic [1:0] S_ARMED = 2'd1;
+  localparam logic [1:0] S_RUN   = 2'd2;
+  localparam logic [1:0] S_DONE  = 2'd3;
 
-  logic _unused;
-  assign _unused = &{1'b0, clk, rst_n, start, m_periods, b, ref_i, ref_q, period_tick};
+  localparam logic signed [ACC_W-1:0] PLUS1  = 1;
+  localparam logic signed [ACC_W-1:0] MINUS1 = -1;
+
+  logic [1:0]     state;
+  logic [M_W-1:0] remaining;   // whole periods still to complete (loaded with M, counts down)
+
+  // Is this cycle's sample inside the window?
+  //   ARMED: only the first tick's sample (and only if M > 0).
+  //   RUN:   every sample except the one on the M-th tick, which starts the next period.
+  logic last_tick, integrate;
+  assign last_tick = period_tick && (remaining == M_W'(1));
+  assign integrate = (state == S_ARMED && period_tick && m_periods != '0) ||
+                     (state == S_RUN && !last_tick);
+
+  // 1-bit x 1-bit multiply = XNOR: +1 when b agrees with the reference, -1 otherwise.
+  logic signed [ACC_W-1:0] step_i, step_q;
+  assign step_i = (b ~^ ref_i) ? PLUS1 : MINUS1;
+  assign step_q = (b ~^ ref_q) ? PLUS1 : MINUS1;
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      state     <= S_IDLE;
+      remaining <= '0;
+      acc_i     <= '0;
+      acc_q     <= '0;
+    end else if (start) begin
+      state <= S_ARMED;             // a tick in this same cycle is ignored
+      acc_i <= '0;
+      acc_q <= '0;
+    end else begin
+      if (integrate) begin
+        acc_i <= acc_i + step_i;
+        acc_q <= acc_q + step_q;
+      end
+      case (state)
+        S_ARMED: if (period_tick) begin
+          if (m_periods == '0) state <= S_DONE;   // empty window
+          else begin
+            state     <= S_RUN;
+            remaining <= m_periods;
+          end
+        end
+        S_RUN: if (period_tick) begin
+          remaining <= remaining - 1'b1;
+          if (last_tick) state <= S_DONE;
+        end
+        default: ;                  // IDLE and DONE wait for start
+      endcase
+    end
+  end
+
+  assign busy = (state == S_ARMED) || (state == S_RUN);
+  assign done = (state == S_DONE);
 
 endmodule
 

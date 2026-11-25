@@ -25,7 +25,7 @@
 //   * fb = ~b
 //   * Reset: both flip-flops 0, so b = 0 and fb = 1.
 //
-// THINGS TO DECIDE AND BE READY TO DEFEND
+// DESIGN QUESTIONS TO BE READY TO DEFEND
 //   1. Why two flip-flops, not one or three? (MTBF: resolution time vs clock period.)
 //   2. Is fb = ~b as a combinational inverter on a flop output glitch-free? Why does
 //      that matter for a signal that drives an RC network?
@@ -44,14 +44,23 @@ module sd_adc (
     output logic fb        // feedback pin drive = ~b
 );
 
-  // ---------------------------------------------------------------------------
-  // TODO(Taylan): your implementation goes here. Delete the tie-offs below.
-  // ---------------------------------------------------------------------------
-  assign b  = 1'b0;
-  assign fb = 1'b1;
+  // Two flip-flops in series: the first may go metastable when the node crosses the
+  // threshold near a clock edge; it gets a whole clock period to resolve before the
+  // second one samples it.
+  logic sync1;
 
-  logic _unused;
-  assign _unused = &{1'b0, clk, rst_n, cmp_in};
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      sync1 <= 1'b0;
+      b     <= 1'b0;
+    end else begin
+      sync1 <= cmp_in;
+      b     <= sync1;
+    end
+  end
+
+  // b is a flop output, so ~b changes once per clock and never glitches.
+  assign fb = ~b;
 
 endmodule
 

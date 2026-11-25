@@ -35,7 +35,7 @@
 //   * Extra SCLK edges after bit 0 in the same CS_N period are ignored.
 //   * The tests run SCLK = f_clk / SPI_DIV with SPI_DIV = 8 by default (env var).
 //
-// THINGS TO DECIDE AND BE READY TO DEFEND
+// DESIGN QUESTIONS TO BE READY TO DEFEND
 //   1. Latency budget. A 2-FF synchroniser plus an edge detector sees an SCLK edge 2-3
 //      clk cycles late. If you change MISO on the detected FALLING edge, MISO becomes valid
 //      ~3-4 clks after that falling edge, but the master samples half an SCLK period
@@ -89,18 +89,179 @@ module spi_regs #(
   localparam logic [3:0] OFF_Q       = 4'h8;   // +8..+A
 
   // ---------------------------------------------------------------------------
-  // TODO(Taylan): your implementation goes here. Delete the tie-offs below.
+  // Synchronisers. sclk gets a third flop so we can see its previous value.
+  // mosi_s[1] and sclk_s[1] went through the same number of flops, so they line up.
   // ---------------------------------------------------------------------------
-  assign miso      = 1'b0;
-  assign run       = 1'b0;
-  assign start     = 1'b0;
-  assign m_periods = '0;
-  assign tw        = '0;
+  logic [2:0] sclk_s;
+  logic [1:0] mosi_s;
+  logic [1:0] cs_s;
 
-  logic _unused;
-  assign _unused = &{1'b0, clk, rst_n, sclk, mosi, cs_n, done, busy, acc_i, acc_q,
-                     ID_VALUE, ADDR_ID, ADDR_CTRL, ADDR_STATUS, ADDR_M_LO, ADDR_M_HI,
-                     CH_BASE, OFF_TW, OFF_I, OFF_Q};
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      sclk_s <= '0;
+      mosi_s <= '0;
+      cs_s   <= 2'b11;
+    end else begin
+      sclk_s <= {sclk_s[1:0], sclk};
+      mosi_s <= {mosi_s[0], mosi};
+      cs_s   <= {cs_s[0], cs_n};
+    end
+  end
+
+  logic sclk_rise, cs_idle;
+  assign sclk_rise = sclk_s[1] & ~sclk_s[2];
+  assign cs_idle   = cs_s[1];
+
+  // ---------------------------------------------------------------------------
+  // Frame shifter. On each SCLK rising edge, frame = bits received so far plus the
+  // new one, so on the 8th edge frame[7:0] = {R/W, ADDR} and on the 16th edge
+  // frame[15:0] is the whole command.
+  // ---------------------------------------------------------------------------
+  logic [4:0]  bit_cnt;          // rising edges seen in this frame, stops at 16
+  logic [14:0] shreg;
+  logic [7:0]  tx;               // read data still to send, MSB first
+  logic [15:0] frame;
+  assign frame = {shreg, mosi_s[1]};
+
+  logic edge_ok;                 // a rising edge that belongs to this frame
+  assign edge_ok = !cs_idle && sclk_rise && (bit_cnt != 5'd16);
+
+  // ---------------------------------------------------------------------------
+  // Register file
+  // ---------------------------------------------------------------------------
+  logic [24*N_CH-1:0] tw_r;     // channel c = tw_r[24*c +: 24]
+
+  // Read mux, addressed by the 7 address bits that arrive on the 8th edge.
+  // Built from whole signals and continuous assigns (Icarus can't model part-selects
+  // inside always_comb sensitivity): the global registers here, then one byte per
+  // channel from the generate loop below.
+  logic [6:0] rd_addr;
+  logic [7:0] rd_data, rd_global;
+  logic [7:0] m_lo, m_hi;
+  assign rd_addr = frame[6:0];
+  assign m_lo    = m_periods[7:0];
+  assign m_hi    = m_periods[15:8];
+
+  always_comb begin
+    case (rd_addr)
+      ADDR_ID:     rd_global = ID_VALUE;
+      ADDR_CTRL:   rd_global = {7'b0, run};         // START always reads 0
+      ADDR_STATUS: rd_global = {6'b0, busy, done};
+      ADDR_M_LO:   rd_global = m_lo;
+      ADDR_M_HI:   rd_global = m_hi;
+      default:     rd_global = 8'h00;
+    endcase
+  end
+
+  // Each channel puts its read byte (or 0) here; at most one is non-zero, so OR them.
+  logic [8*N_CH-1:0] ch_rd;
+
+  function automatic logic [7:0] or_bytes(input logic [8*N_CH-1:0] v);
+    or_bytes = 8'h00;
+    for (int k = 0; k < N_CH; k++) or_bytes = or_bytes | v[8*k +: 8];
+  endfunction
+
+  assign rd_data = rd_global | or_bytes(ch_rd);
+
+  // Write strobe: the 16th bit of a write frame, CS_N still low.
+  logic       wr_stb;
+  logic [6:0] wr_addr;
+  logic [7:0] wr_data;
+  assign wr_stb  = edge_ok && (bit_cnt == 5'd15) && !frame[15];
+  assign wr_addr = frame[14:8];
+  assign wr_data = frame[7:0];
+
+  // ---------------------------------------------------------------------------
+  // Shifting and MISO. MISO advances right after the detected RISING edge: the
+  // master has just sampled the old bit, so the new one gets almost a whole SCLK
+  // period of setup. That is what lets SCLK go up to f_clk/4.
+  // ---------------------------------------------------------------------------
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      bit_cnt <= '0;
+      shreg   <= '0;
+      tx      <= '0;
+      miso    <= 1'b0;
+    end else if (cs_idle) begin
+      bit_cnt <= '0;
+      miso    <= 1'b0;
+    end else if (edge_ok) begin
+      shreg   <= frame[14:0];
+      bit_cnt <= bit_cnt + 1'b1;
+      if (bit_cnt == 5'd7) begin                    // command byte complete
+        miso <= frame[7] & rd_data[7];              // bit 7 of the read data, or 0 for a write
+        tx   <= frame[7] ? {rd_data[6:0], 1'b0} : 8'h00;
+      end else if (bit_cnt >= 5'd8 && bit_cnt <= 5'd14) begin
+        miso <= tx[7];                              // bits 6..0
+        tx   <= {tx[6:0], 1'b0};
+      end else if (bit_cnt == 5'd15) begin
+        miso <= 1'b0;                               // frame over
+      end
+    end
+  end
+
+  // Control registers
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      run       <= 1'b0;
+      start     <= 1'b0;
+      m_periods <= '0;
+    end else begin
+      start <= 1'b0;                                // one-cycle pulse
+      if (wr_stb) begin
+        case (wr_addr)
+          ADDR_CTRL: begin
+            run   <= wr_data[0];
+            start <= wr_data[1];
+          end
+          ADDR_M_LO: m_periods[7:0]  <= wr_data;
+          ADDR_M_HI: m_periods[15:8] <= wr_data;
+          default:   ;
+        endcase
+      end
+    end
+  end
+
+  // Per-channel tuning words
+  genvar c;
+  generate
+    for (c = 0; c < N_CH; c++) begin : g_ch
+      localparam logic [2:0] CH_HI = CH_BASE[6:4] + 3'(c);
+      always_ff @(posedge clk) begin
+        if (!rst_n) begin
+          tw_r[24*c +: 24] <= '0;
+        end else if (wr_stb && wr_addr[6:4] == CH_HI) begin
+          case (wr_addr[3:0])
+            OFF_TW + 4'd0: tw_r[24*c +: 8]      <= wr_data;
+            OFF_TW + 4'd1: tw_r[24*c + 8 +: 8]  <= wr_data;
+            OFF_TW + 4'd2: tw_r[24*c + 16 +: 8] <= wr_data;
+            default:       ;
+          endcase
+        end
+      end
+
+      // This channel's read byte: TW, I or Q, or 0 when not addressed
+      logic [23:0] ch_tw, ch_i, ch_q;
+      logic [7:0]  ch_byte;
+      assign ch_tw = tw_r[24*c +: 24];
+      assign ch_i = acc_i[24*c +: 24];
+      assign ch_q = acc_q[24*c +: 24];
+      assign ch_byte =
+          (rd_addr[6:4] != CH_HI)          ? 8'h00 :
+          (rd_addr[3:0] == OFF_TW + 4'd0)  ? ch_tw[7:0]     :
+          (rd_addr[3:0] == OFF_TW + 4'd1)  ? ch_tw[15:8]    :
+          (rd_addr[3:0] == OFF_TW + 4'd2)  ? ch_tw[23:16]   :
+          (rd_addr[3:0] == OFF_I  + 4'd0)  ? ch_i[7:0]      :
+          (rd_addr[3:0] == OFF_I  + 4'd1)  ? ch_i[15:8]     :
+          (rd_addr[3:0] == OFF_I  + 4'd2)  ? ch_i[23:16]    :
+          (rd_addr[3:0] == OFF_Q  + 4'd0)  ? ch_q[7:0]      :
+          (rd_addr[3:0] == OFF_Q  + 4'd1)  ? ch_q[15:8]     :
+          (rd_addr[3:0] == OFF_Q  + 4'd2)  ? ch_q[23:16]    : 8'h00;
+      assign ch_rd[8*c +: 8] = ch_byte;
+    end
+  endgenerate
+
+  assign tw = tw_r;
 
 endmodule
 

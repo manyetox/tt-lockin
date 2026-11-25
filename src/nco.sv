@@ -23,7 +23,7 @@
 //     the first sample of a new reference period.
 //   * tw may change at any time. Phase stays continuous (no reset on a TW write).
 //
-// THINGS TO DECIDE AND BE READY TO DEFEND
+// DESIGN QUESTIONS TO BE READY TO DEFEND
 //   1. How do you get the carry out of a W-bit add without building a second adder?
 //   2. Frequency resolution is f_clk / 2^W. What is it at 10 MHz and at 50 MHz?
 //      Why is the period of ref_i not always the same number of clocks, and what does that
@@ -51,10 +51,33 @@ module nco #(
     output logic         period_tick   // 1 in the first cycle of every new period
 );
 
-  // ---------------------------------------------------------------------------
-  // TODO(Taylan): your implementation goes here. Delete the tie-offs below.
-  // ---------------------------------------------------------------------------
- 
+  // One adder, one bit wider than the phase: bit W of the sum is the carry out,
+  // i.e. "the phase wrapped round", which is exactly the period_tick we need.
+  logic [W-1:0] phase;
+  logic [W:0]   sum;
+  assign sum = {1'b0, phase} + {1'b0, tw};
+
+  // ref_q is registered from the NEXT phase, so the pin never glitches when
+  // phase[W-1] and phase[W-2] flip on the same edge (01->10, 11->00). The register
+  // always holds phase[W-1]^phase[W-2] of the current phase, as the contract says.
+  logic ref_q_r;
+
+  always_ff @(posedge clk) begin
+    if (!rst_n) begin
+      phase       <= '0;
+      period_tick <= 1'b0;
+      ref_q_r     <= 1'b0;
+    end else if (en) begin
+      phase       <= sum[W-1:0];
+      period_tick <= sum[W];
+      ref_q_r     <= sum[W-1] ^ sum[W-2];
+    end else begin
+      period_tick <= 1'b0;          // phase and ref_q hold
+    end
+  end
+
+  assign ref_i = phase[W-1];
+  assign ref_q = ref_q_r;
 
 endmodule
 
