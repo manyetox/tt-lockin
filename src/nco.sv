@@ -54,12 +54,7 @@ module nco #(
   // ---------------------------------------------------------------------------
   // TODO(Taylan): your implementation goes here. Delete the tie-offs below.
   // ---------------------------------------------------------------------------
-  assign ref_i       = 1'b0;
-  assign ref_q       = 1'b0;
-  assign period_tick = 1'b0;
-
-  logic _unused;
-  assign _unused = &{1'b0, clk, rst_n, en, tw};
+ 
 
 endmodule
 
